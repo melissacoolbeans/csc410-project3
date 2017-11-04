@@ -1,5 +1,5 @@
 # Project 3
-Anthony Samaha, Christiaan Rutten, Melissa Nguyen
+Anthony Samaha, Christiaan Rutten, Melissa Ng
 
 ## Check-in 1
 File: check-in1.py

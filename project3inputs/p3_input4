@@ -1,0 +1,8 @@
+int dummy() {
+  int x = 7;
+  int y = x;
+  int a = q + 5;
+  b = q;
+  a++;
+  z = a == b;
+}

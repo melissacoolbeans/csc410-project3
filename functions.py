@@ -12,6 +12,7 @@ class NodeVisitor(mast.NodeVisitor):
     def __init__(self):
         self.assignment = {}
         self.other = []
+        self.decl = []
 
     def visit_ID(self, node):
         '''
@@ -19,19 +20,19 @@ class NodeVisitor(mast.NodeVisitor):
         '''
         self.other.append(node.name)
 
+    def visit_Decl(self, node):
+        """
+        a = 5;
+        """
+        if not isinstance(node.type, mast.FuncDecl):
+            self.decl.append(node.name)
+
+
     def visit_Assignment(self, assignment):
 
         lefthand = assignment.lvalue
         righthand = assignment.rvalue
-
-        if not lefthand.name in self.assignment.keys():
-            self.assignment[lefthand.name] = {'Constants': [], 'IDs': [], 'ArrayRef': []}
-
-        rh_info = assignment_value_helper(righthand)
-        
-        self.assignment[lefthand.name]['IDs'].append(rh_info['IDs'])
-        self.assignment[lefthand.name]['Constants'].append(rh_info['Constants'])
-        self.assignment[lefthand.name]['ArrayRef'].append(rh_info['ArrayRef'])
+        self.assignment[lefthand.name] = assignment_value_helper(righthand)
 
 
 class FunctionPrototype:
@@ -77,24 +78,24 @@ def assignment_value_helper(value, value_map=None):
         }
 
     # constant like 10
-    if isinstance(value, c_ast.Constant):
+    if isinstance(value, mast.Constant):
         value_map['Constants'].append(value.value)
 
     # var like a
-    elif isinstance(value, c_ast.ID):
+    elif isinstance(value, mast.ID):
         value_map['IDs'].append(value.name)
 
     # left op right
-    elif isinstance(value, c_ast.BinaryOp):
+    elif isinstance(value, mast.BinaryOp):
         left = value.left
         op = value.op
         right = value.right
-
+        #print(left, right)
         # call recursively on the left and right values of the operater
         value_map = assignment_value_helper(left, value_map)
         value_map = assignment_value_helper(right, value_map)
 
-    elif isinstance(value, c_ast.ArrayRef):
+    elif isinstance(value, mast.ArrayRef):
         # array[subscript]
         subscript = value.subscript
         array = value.name
@@ -124,18 +125,17 @@ def get_vars_and_written(vs):
         written_variables.append(lefthand)
 
         # we only want IDs not Constants
-        for expr in righthand['IDs']:
-            for subvar in expr:
-                variables.append(subvar)
+        for sub_var in righthand['IDs']:
+            variables.append(sub_var)
 
-        for expr in righthand['ArrayRef']:
-            for sub_array in expr:
-                variables.append(sub_array)
+        for sub_array in righthand['ArrayRef']:
+            variables.append(sub_array)
 
+    written_variables += vs.decl
+    variables += vs.decl
 
     # add all other variables (ex if statements, while, etc)
     variables += vs.other
-
 
     # variables may be called more than once
     # remove the dups
@@ -149,9 +149,9 @@ def get_args_and_output(vs):
     variables, written_variables = get_vars_and_written(vs)
     arguments = [x for x in variables if x not in written_variables]
     output = written_variables
-    
+
     for lefthand in vs.assignment:
         if lefthand in vs.assignment[lefthand]['IDs'][0]:
             arguments.append(lefthand)
-            
+
     return arguments, written_variables

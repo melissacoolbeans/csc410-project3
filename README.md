@@ -19,6 +19,7 @@ File: func-ast.py
 - Started to add string representations for different nodes:
 - Let, Id, Assignment ...
 - Added a new AST node to represent a function def.
+
 File: checkin-in3.py
 - Added code to convert all blocks into a functional ast. 
 - Then with the new ast, output functional code that was converted from our source c coude. 

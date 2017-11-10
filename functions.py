@@ -24,7 +24,14 @@ class NodeVisitor(mast.NodeVisitor):
         lefthand = assignment.lvalue
         righthand = assignment.rvalue
 
-        self.assignment[lefthand.name] = assignment_value_helper(righthand)
+        if not lefthand.name in self.assignment.keys():
+            self.assignment[lefthand.name] = {'Constants': [], 'IDs': [], 'ArrayRef': []}
+
+        rh_info = assignment_value_helper(righthand)
+        
+        self.assignment[lefthand.name]['IDs'].append(rh_info['IDs'])
+        self.assignment[lefthand.name]['Constants'].append(rh_info['Constants'])
+        self.assignment[lefthand.name]['ArrayRef'].append(rh_info['ArrayRef'])
 
 
 class FunctionPrototype:
@@ -117,11 +124,13 @@ def get_vars_and_written(vs):
         written_variables.append(lefthand)
 
         # we only want IDs not Constants
-        for sub_var in righthand['IDs']:
-            variables.append(sub_var)
+        for expr in righthand['IDs']:
+            for subvar in expr:
+                variables.append(subvar)
 
-        for sub_array in righthand['ArrayRef']:
-            variables.append(sub_array)
+        for expr in righthand['ArrayRef']:
+            for sub_array in expr:
+                variables.append(sub_array)
 
 
     # add all other variables (ex if statements, while, etc)
@@ -140,5 +149,9 @@ def get_args_and_output(vs):
     variables, written_variables = get_vars_and_written(vs)
     arguments = [x for x in variables if x not in written_variables]
     output = written_variables
-
+    
+    for lefthand in vs.assignment:
+        if lefthand in vs.assignment[lefthand]['IDs'][0]:
+            arguments.append(lefthand)
+            
     return arguments, written_variables

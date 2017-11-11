@@ -168,6 +168,26 @@ class Constant(Node):
 
     attr_names = ('value', )
 
+class funcTuple(Node):
+    __slots__ = ('value', 'coord', '__weakref__')
+
+    def __init__(self, values, coord=None):
+        self.values = values
+        self.coord = coord
+
+    def __str__(self):
+        string = "("
+        first = True
+        for val in value:
+            if first:
+                first = False
+                string += "%s" % val.__str__()
+            else:
+                string += ", %s" % val.__str__()
+
+        return string + ")"
+
+
 class LetRec(Node):
     __slots__ = (
 		'function_name',
@@ -354,24 +374,48 @@ class EmptyStatement(Node):
 
     attr_names = ()
 
+class ArrayRef(Node):
+    __slots__ = ('name', 'subscript', 'coord', '__weakref__')
+    def __init__(self, name, subscript, coord=None):
+        self.name = name
+        self.subscript = subscript
+        self.coord = coord
+
+    def children(self):
+        nodelist = []
+        if self.name is not None: nodelist.append(("name", self.name))
+        if self.subscript is not None: nodelist.append(("subscript", self.subscript))
+        return tuple(nodelist)
+
+    def __str__(self):
+        return "%s.(%s)" % (self.name, self.subscript.__str__())
+
+
+    attr_names = ()
 
 class ExprList(Node):
-	'''
-	Lists can also represent:
-	- arrays
-	- tuples
-	'''
-	__slots__ = ('exprs', 'coord', '__weakref__')
+    __slots__ = ('exprs', 'coord', '__weakref__')
 
-	def __init__(self, exprs, coord=None):
-		self.exprs = exprs
-		self.coord = coord
+    def __init__(self, exprs, coord=None):
+        self.exprs = exprs
+        self.coord = coord
 
-	def children(self):
-		nodelist = []
-		for i, child in enumerate(self.exprs or []):
-			nodelist.append(("exprs[%d]" % i, child))
-		return tuple(nodelist)
+    def children(self):
+        nodelist = []
+        for i, child in enumerate(self.exprs or []):
+            nodelist.append(("exprs[%d]" % i, child))
+        return tuple(nodelist)
+
+    def __str__(self):
+        string = "("
+        first = True
+        for i in self.exprs:
+            if first:
+                string += "%s" % i
+                first = False
+            else:
+                string += ", %s" % i
+        return string + ")"
 
 	attr_names = ()
 
@@ -405,6 +449,12 @@ class FuncCall(Node):
         if self.name is not None: nodelist.append(("name", self.name))
         if self.args is not None: nodelist.append(("args", self.args))
         return tuple(nodelist)
+
+    def __str__(self):
+        if not self.args:
+            return "%s()" % self.name.__str__()
+        else:
+            return "%s%s" % (self.name.__str__(), self.args.__str__())
 
     attr_names = ()
 

@@ -7,6 +7,10 @@ import func_ast as fast
 from minic.mutils import lmap
 #TODO: CLEAN UP IMPORTS
 
+
+# PRINT UNSUPPORTED
+show_unsuported = True
+
 # HELPER FUNCTIONS COPIED FROM c_ast_to_minic.py
 def unsupported(y):
     if y is None:
@@ -29,6 +33,8 @@ def v(orig):
 def tmap(x):
     if isinstance(x, list):
         return lmap(transform_ctf, x)
+    elif not x:
+        return None
     else:
         return transform_ctf(x)
 # HELPER FUNCTIONS COPIED FROM c_ast_to_minic.py
@@ -38,13 +44,6 @@ def tmap(x):
 def transform_ctf(x):
     """
     Transform function from minic to our function representation
-    Currently Supports:
-        Constants
-        Decl
-        ID
-        Binary
-        Assignments
-        Unary
     """
     return {
         # constant ... = 5;
@@ -53,16 +52,27 @@ def transform_ctf(x):
         mc.ID: (lambda orig: fast.ID(v(orig.name))),
         # ... = (left) op (right)
         mc.BinaryOp: (lambda orig: fast.BinaryOp(v(orig.op), transform_ctf(orig.left), transform_ctf(orig.right), coord=orig.coord)),
+        # ... = array[...];
+        mc.ArrayRef: (lambda orig: fast.ArrayRef(transform_ctf(orig.name), transform_ctf(orig.subscript))),
+        # ... = foo(...);
+        mc.FuncCall: (lambda orig: fast.FuncCall(transform_ctf(orig.name), tmap(orig.args))),
+
 
         # int x = ...
         mc.Decl: (lambda orig: fast.Let(transform_ctf(orig.name), transform_ctf(orig.init), coord=orig.coord)),
         # x = ...
         mc.Assignment: (lambda orig: fast.Let(transform_ctf(orig.lvalue), transform_ctf(orig.rvalue), coord=orig.coord)),
+        # int a[] = {1,2,3,...}
+        mc.InitList: (lambda orig: fast.ExprList(tmap(orig.exprs))),
+
+        # (...)
+        mc.ExprList: (lambda orig: fast.ExprList(tmap(orig.exprs))),
 
         str: (lambda orig: orig),
         int: (lambda orig: orig),
         float: (lambda orig: orig),
         list: (lambda orig: tmap(orig)),
+        None: None,
     }.get(x.__class__, lambda y: unsupported(y))(x)
 
 

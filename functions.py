@@ -134,11 +134,13 @@ def get_vars_and_written(vs):
         written_variables.append(lefthand)
 
         # we only want IDs not Constants
-        for sub_var in righthand['IDs']:
-            variables.append(sub_var)
+        for expr in righthand['IDs']:
+            for subvar in expr:
+                variables.append(subvar)
 
-        for sub_array in righthand['ArrayRef']:
-            variables.append(sub_array)
+        for expr in righthand['ArrayRef']:
+            for sub_array in expr:
+                variables.append(sub_array)
 
     written_variables += vs.decl
     variables += vs.decl

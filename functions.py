@@ -26,13 +26,23 @@ class NodeVisitor(mast.NodeVisitor):
         """
         if not isinstance(node.type, mast.FuncDecl):
             self.decl.append(node.name)
+            if type(node.init) == mast.ID:
+                self.other.append(node.init.name)
 
 
     def visit_Assignment(self, assignment):
 
         lefthand = assignment.lvalue
         righthand = assignment.rvalue
-        self.assignment[lefthand.name] = assignment_value_helper(righthand)
+        
+        if not lefthand.name in self.assignment.keys():     
+            self.assignment[lefthand.name] = {'Constants': [], 'IDs': [], 'ArrayRef': []}     
+
+        rh_info = assignment_value_helper(righthand)      
+
+        self.assignment[lefthand.name]['IDs'].append(rh_info['IDs'])      
+        self.assignment[lefthand.name]['Constants'].append(rh_info['Constants'])      
+        self.assignment[lefthand.name]['ArrayRef'].append(rh_info['ArrayRef'])
 
 
 class FunctionPrototype:

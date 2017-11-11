@@ -1,8 +1,28 @@
-int dummy() {
+int dummy0() {
   int x = 7;
   int y = x;
-  int a = q + 5;
-  b = q;
+  int z = 2 + 5;
+  int a = q + 5 + a - 4;
+  int b = q;
+}
+
+int dummy1() {
+  b = x + 7;
   a++;
-  z = a == b;
+}
+
+int dummy2() {
+  a = b[k];
+  c = b[k + 5];
+}
+
+int dummy3() {
+  int a[] = {1, 2, 3};
+  char b[] = {'a', 'b', 'c'};
+}
+
+int dummy4() {
+  a = foo();
+  d = foo(a, b);
+  z = foo(goo(), a, goo(b, c));
 }

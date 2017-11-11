@@ -23,5 +23,5 @@ File: func-ast.py
 File: checkin-in3.py
 - Added code to convert all blocks into a functional ast. 
 - Then with the new ast, output functional code that was converted from our source c coude. 
-- Currently support all basic code (binary, unary, variable, constant, Decl) except if and iteration nodes. 
+- Currently support all basic code (binary, unary, variable, constant, Decl, array ref and array decl, list expr) except if and iteration nodes. 
 

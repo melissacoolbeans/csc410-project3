@@ -20,8 +20,14 @@ File: func-ast.py
 - Let, Id, Assignment ...
 - Added a new AST node to represent a function def.
 
-File: checkin-in3.py
+File: checkin3.py
 - Added code to convert all blocks into a functional ast. 
 - Then with the new ast, output functional code that was converted from our source c coude. 
 - Currently support all basic code (binary, unary, variable, constant, Decl, array ref and array decl, list expr) except if and iteration nodes. 
+
+
+## Check-in 4
+- File: checkin4.py
+- Added if, else if, else statement support
+- simply run python checkin4.py to try it!
 

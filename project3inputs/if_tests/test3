@@ -1,0 +1,9 @@
+int dummy3() {
+
+if (z) {
+  a = 1;
+} else if(k) {
+  b = 2;
+}
+
+}

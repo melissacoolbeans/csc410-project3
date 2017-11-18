@@ -23,6 +23,7 @@
 #-----------------------------------------------------------------
 
 import sys
+import functions
 
 
 class Node(object):
@@ -250,23 +251,6 @@ class BinaryOp(Node):
     attr_names = ('op', )
 
 
-#TODO: remove
-class Block(Node):
-    __slots__ = ('block_items', 'coord', '__weakref__')
-
-    def __init__(self, block_items, coord=None):
-        self.block_items = block_items
-        self.coord = coord
-
-    def children(self):
-        nodelist = []
-        for i, child in enumerate(self.block_items or []):
-            nodelist.append(("block_items[%d]" % i, child))
-        return tuple(nodelist)
-
-    attr_names = ()
-
-
 class functionDef(Node):
     __slots__ = ('input_args', 'output_args', 'block_items', 'coord', '__weakref__')
     #TODO: ADD A FUNCTION NAME INPUT
@@ -309,16 +293,34 @@ class functionDef(Node):
 
         # now go over all our body items
         tabs = 1
+
+        last_is_if = False
         for body in self.block_items:
-            string += tabs * "\t"
+
+
             # print body
             # body can be a let or let rec
-            string += "%s in \n" % body.__str__()
+
+            if isinstance(body, If):
+                if_body, _ = body.__str__(tabs)
+                string += "%s in \n" % if_body
+                last_is_if = True
+
+            else:
+                string += tabs * "\t"
+                #string += "%s in \n" % body.__str__()
+                string += "%s in \n" % body.__str__()
+                last_is_if = False
             #indent
             tabs += 1
 
         # add final return
-        string += tabs * "\t"
+
+        if last_is_if:
+            string = string[:-4]
+            string += "\nin "
+        else:
+            string += tabs * "\t"
         string += "(%s)" % args_cleaner(self.output_args)
 
         # return the string
@@ -528,12 +530,16 @@ class IdentifierType(Node):
 
 
 class If(Node):
-    __slots__ = ('cond', 'iftrue', 'iffalse', 'coord', '__weakref__')
-    def __init__(self, cond, iftrue, iffalse, coord=None):
+    __slots__ = ('cond', 'iftrue', 'iffalse', 'in_args', 'out_args', 'coord', '__weakref__')
+    def __init__(self, cond, iftrue, iffalse, in_args, out_args, coord=None):
         self.cond = cond
         self.iftrue = iftrue
         self.iffalse = iffalse
         self.coord = coord
+
+        self.in_args = in_args
+        self.out_args = out_args
+
 
     def children(self):
         nodelist = []
@@ -542,7 +548,120 @@ class If(Node):
         if self.iffalse is not None: nodelist.append(("iffalse", self.iffalse))
         return tuple(nodelist)
 
+    def __str__(self, parent_tabs):
+        def args_cleaner(args):
+            """
+            Helper function to format our sets
+            """
+            string = ""
+            first = True
+            for arg in args:
+                if first:
+                    string += str(arg)
+                    first = False
+                else:
+                    string += ", %s" % str(arg)
+            return string
+
+
+        string = ""
+        tabs = parent_tabs
+
+        string += tabs * "\t"
+        string += "let (%s) =\n" % args_cleaner(self.in_args)
+
+
+        tabs += 1
+
+        string += tabs * "\t"
+        string += "if "
+        string += str(self.cond)
+
+        string += "\n"
+        string += tabs * "\t"
+        string += "then\n"
+
+        if_block, t = self.iftrue.__str__(tabs)
+        string += if_block
+        # do if in statement
+        string += t * "\t"
+        string += ("(%s)") % args_cleaner(self.in_args)
+
+        string += "\n" + tabs * "\t"
+        string += "else\n"
+
+        if self.iffalse:
+            else_block, t = self.iffalse.__str__(tabs)
+            string += else_block
+
+            if isinstance(self.iffalse, If):
+                string += "\n" + parent_tabs * "\t"
+                string += ("in (%s)") % args_cleaner(self.in_args)
+                return string, tabs
+            else:
+
+                # do else in statement
+                string += t * "\t"
+                string += ("(%s)") % args_cleaner(self.in_args)
+
+
+
+
+        else:
+            for i in self.in_args:
+                string += tabs * "\t"
+                string += "let %s = %s in \n" % (str(i), str(i))
+                tabs += 1
+
+            # do else in statement
+            string += tabs * "\t"
+            string += ("(%s)") % args_cleaner(self.in_args)
+
+
+
+        string += "\n" + parent_tabs * "\t"
+        string += "in (%s)" % args_cleaner(self.out_args)
+        return string, tabs
+
+
     attr_names = ()
+
+class Block(Node):
+    __slots__ = ('block_items', 'coord', '__weakref__')
+
+    def __init__(self, block_items, coord=None):
+        self.block_items = block_items
+        self.coord = coord
+
+        #block = block_items[0]
+        # Find all relevant vars for func input and output
+        #nvs = NodeVisitor()
+        #nvs.visit(self)
+        # input_args, output_args = get_vars_and_written(nvs)
+        # print(input_args, output_args)
+
+    def children(self):
+        nodelist = []
+        for i, child in enumerate(self.block_items or []):
+            nodelist.append(("block_items[%d]" % i, child))
+        return tuple(nodelist)
+
+    attr_names = ()
+
+    def __str__(self, tabs=1):
+
+
+        string = ""
+
+        for index, child in self.children():
+            string += tabs * "\t"
+            tabs += 1
+            string += "%s in \n" % str(child)
+
+        #string += "(....)"
+
+
+        return string, tabs
 
 
 class InitList(Node):

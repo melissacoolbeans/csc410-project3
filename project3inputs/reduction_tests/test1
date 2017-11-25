@@ -1,0 +1,18 @@
+int dummy0() {
+  int x = 7;
+  int y = x;
+  x = 9;
+  int z = 2 + 5;
+  int a = q + 5 + a - 4;
+  int b = q;
+
+  if (a + z == 6) {
+    c = 7;
+  }
+
+  g = 7;
+  g = 9;
+  h = a;
+  a = 7;
+  j = h + 4;
+}

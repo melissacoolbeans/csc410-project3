@@ -42,7 +42,7 @@ def tmap(x):
         return transform_ctf(x)
 # HELPER FUNCTIONS COPIED FROM c_ast_to_minic.py
 
-def handle_if_statements(orig):
+def handle_if_statements(orig, optimize_vars=None):
 
 
     if_block = orig.iftrue
@@ -60,7 +60,7 @@ def handle_if_statements(orig):
 
         in_args = list(set(input_args1 + input_args2))
         out_args = list(set(output_args1 + output_args2))
-        else_obj = transform_ctf(orig.iffalse)
+        else_obj = transform_ctf(orig.iffalse, optimize_vars)
 
     else:
         in_args = input_args1
@@ -69,14 +69,14 @@ def handle_if_statements(orig):
 
     return fast.If(
         transform_ctf(orig.cond),
-        transform_ctf(orig.iftrue),
+        transform_ctf(orig.iftrue, optimize_vars),
         else_obj,
         in_args,
         out_args,
     )
 
 
-def transform_ctf(x):
+def transform_ctf(x, optimize_vars=None):
     """
     Transform function from minic to our function representation
     """
@@ -94,11 +94,11 @@ def transform_ctf(x):
 
         #mc.If: (lambda orig: fast.If(transform_ctf(orig.cond), transform_ctf(orig.iftrue), transform_ctf(orig.iffalse))),
 
-        mc.If: (lambda orig: handle_if_statements(orig)),
+        mc.If: (lambda orig: handle_if_statements(orig, optimize_vars)),
 
 
 
-        mc.Block: (lambda orig: fast.Block(lmap(transform_ctf, orig.block_items))),
+        mc.Block: (lambda orig: fast.Block(lmap(transform_ctf, orig.block_items), optimize_vars)),
 
         # int x = ...
         mc.Decl: (lambda orig: fast.Let(transform_ctf(orig.name), transform_ctf(orig.init), coord=orig.coord)),
@@ -130,18 +130,35 @@ class BlockVisitor(mast.NodeVisitor):
         ie: every block becomes a function
         """
         new_function = block_converter(node)
-        self.functional_code.append(new_function)
-
+        self.functional_code.append(str(new_function))
 
 def block_converter(block):
     """
     Converts minic_ast.Block to func_fast.functionDef
     """
 
+    # clear static vars
+    fast.Node.never_used = None
+    fast.Node.var_constants = None
+    fast.Node.var_constants_reference = {}
+    fast.Node.current_opt_index = None
+
+    fast.Node.current_tab_index = None
+
     # Find all relevant vars for func input and output
     nvs = NodeVisitor()
     nvs.visit(block)
     input_args, output_args = get_vars_and_written(nvs)
+
+    # helpers to optimize code and remove not needed lines
+    var_order = nvs.order
+    never_used = get_variable_reductions(nvs)
+    var_constants = get_variable_constants(nvs)
+    optimize_vars = [var_order, never_used, var_constants]
+
+    # remove if statements variables
+    never_used, var_constants = remove_if_statements(var_order, never_used, var_constants)
+
 
     # update the helper to make the function header
     # currently does not produce correct behabiour
@@ -153,11 +170,16 @@ def block_converter(block):
     block_items = block.block_items
 
     # transform them to our functional representation
-    func_block_items = [transform_ctf(i) for i in block_items if i]
+    func_block_items = [transform_ctf(i, optimize_vars) for i in block_items if i]
 
+    #Toggle for optimizer, eventually remove and make it always on
 
+    fast.Node.optimize_vars = True
+    fast.Node.never_used = never_used
+    fast.Node.var_constants = var_constants
+    fast.Node.current_opt_index = 0
 
-
+    fast.Node.current_tab_index = 0
 
     func_def = fast.functionDef(input_args, output_args, func_block_items)
 

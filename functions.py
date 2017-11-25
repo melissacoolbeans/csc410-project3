@@ -12,12 +12,17 @@ class NodeVisitor(mast.NodeVisitor):
     def __init__(self):
         self.assignment = {}
         self.other = []
-        self.decl = []
+        self.decl = {}
+
+        # the order that we see items on the left hand side
+        self.order = []
 
     def visit_ID(self, node):
         '''
         For example if statement vars
         '''
+        self.order.append(['if', node.name])
+
         self.other.append(node.name)
 
     def visit_Decl(self, node):
@@ -25,23 +30,40 @@ class NodeVisitor(mast.NodeVisitor):
         a = 5;
         """
         if not isinstance(node.type, mast.FuncDecl):
-            self.decl.append(node.name)
-            if type(node.init) == mast.ID:
-                self.other.append(node.init.name)
+            lefthand = node.name
+            righthand = node.init
+
+
+            values = assignment_value_helper(node.init)
+
+            if not lefthand in self.decl.keys():
+                self.decl[lefthand] = {'Constants': [], 'IDs': [], 'ArrayRef': [], 'count': 0}
+
+            rh_info = assignment_value_helper(righthand)
+
+            self.decl[lefthand]['IDs'].append(rh_info['IDs'])
+            self.decl[lefthand]['Constants'].append(rh_info['Constants'])
+            self.decl[lefthand]['ArrayRef'].append(rh_info['ArrayRef'])
+            self.decl[lefthand]['count'] += 1
+
+            self.order.append([lefthand, rh_info['IDs'] + rh_info['ArrayRef']])
 
     def visit_Assignment(self, assignment):
 
         lefthand = assignment.lvalue
         righthand = assignment.rvalue
-        
-        if not lefthand.name in self.assignment.keys():     
-            self.assignment[lefthand.name] = {'Constants': [], 'IDs': [], 'ArrayRef': []}     
 
-        rh_info = assignment_value_helper(righthand)      
+        if not lefthand.name in self.assignment.keys():
+            self.assignment[lefthand.name] = {'Constants': [], 'IDs': [], 'ArrayRef': [], 'count': 0}
 
-        self.assignment[lefthand.name]['IDs'].append(rh_info['IDs'])      
-        self.assignment[lefthand.name]['Constants'].append(rh_info['Constants'])      
+        rh_info = assignment_value_helper(righthand)
+
+        self.assignment[lefthand.name]['IDs'].append(rh_info['IDs'])
+        self.assignment[lefthand.name]['Constants'].append(rh_info['Constants'])
         self.assignment[lefthand.name]['ArrayRef'].append(rh_info['ArrayRef'])
+        self.assignment[lefthand.name]['count'] += 1
+
+        self.order.append([lefthand.name, rh_info['IDs'] + rh_info['ArrayRef']])
 
 
 class FunctionPrototype:
@@ -118,7 +140,7 @@ def assignment_value_helper(value, value_map=None):
     return value_map
 
 
-def get_vars_and_written(vs):
+def get_vars_and_written(vs, remove_dups=True):
     '''
     Print all variables in the input and specify which are
     written variables (on the left hand side)
@@ -141,17 +163,31 @@ def get_vars_and_written(vs):
         for expr in righthand['ArrayRef']:
             for sub_array in expr:
                 variables.append(sub_array)
+    #TODO: simplyfy to a helper function
+    for lefthand in vs.decl:
+        righthand = vs.decl[lefthand]
 
-    written_variables += vs.decl
-    variables += vs.decl
+        variables.append(lefthand)
+        written_variables.append(lefthand)
+
+        # we only want IDs not Constants
+        for expr in righthand['IDs']:
+            for subvar in expr:
+                variables.append(subvar)
+
+        for expr in righthand['ArrayRef']:
+            for sub_array in expr:
+                variables.append(sub_array)
 
     # add all other variables (ex if statements, while, etc)
     variables += vs.other
 
-    # variables may be called more than once
-    # remove the dups
-    variables = list(set(variables))
-    written_variables = list(set(written_variables))
+
+    if remove_dups:
+        # variables may be called more than once
+        # remove the dups
+        variables = list(set(variables))
+        written_variables = list(set(written_variables))
 
     return variables, written_variables
 
@@ -166,3 +202,171 @@ def get_args_and_output(vs):
             arguments.append(lefthand)
 
     return arguments, written_variables
+
+
+def get_depending_vars(item, vs):
+
+    dependencies = []
+
+    if item in vs.decl:
+        righthand = vs.decl[item]
+    elif item in vs.assignment:
+        righthand = vs.assignment[item]
+    else:
+        return dependencies
+
+    for expr in righthand['IDs']:
+        for subvar in expr:
+            dependencies.append(subvar)
+    for expr in righthand['ArrayRef']:
+        for sub_array in expr:
+            dependencies.append(sub_array)
+
+    return dependencies
+
+
+def get_variable_reductions(vs):
+
+
+    #TODO: var is overwriten before used, remove old definision
+
+    # initially all vars are available to be reduced
+    # this list will contain the index of vars to be pruned
+    not_eligable = []
+
+    # 1. To first qualify, a variable must never be used after declared
+        # check subsequent declartions and assignments
+    index = 0
+    for item in vs.order:
+        var = item[0]
+
+        if index == len(vs.order) - 1:
+            # no more following declarations/assignments
+            break
+        elif var == 'if':
+            not_eligable.append(index)
+            index += 1
+            continue # we dont support if reductions yet
+
+        for next_item in vs.order[index+1:]:
+            next_var = next_item[0]
+            next_dependencies = next_item[1]
+
+            if next_dependencies == None:
+                continue
+            elif next_var == 'if':
+                if next_dependencies == var:
+                    not_eligable.append(index)
+            else:
+                for expr in next_dependencies:
+                    for subvar in expr:
+                        if subvar == var:
+                            not_eligable.append(index)
+        index += 1
+
+
+    # 2. check if the variable depends on something that is later reasigned
+    index = 0
+    for item in vs.order:
+        var = item[0]
+        dependencies = item[1]
+
+        if index == len(vs.order) - 1:
+            # no more following declarations/assignments
+            break
+        elif var == 'if':
+            not_eligable.append(index)
+            index += 1
+            continue # we dont support if reductions yet
+
+        for next_item in vs.order[index+1:]:
+            next_var = next_item[0]
+            next_dependencies = next_item[1]
+
+            if next_dependencies == None or next_var == 'if':
+                continue # we assume no assignments in a if
+            else:
+                if next_var in dependencies:
+                    not_eligable.append(index)
+
+        index += 1
+
+
+
+    eligable = []
+    offset = 0
+
+    for index in range(len(vs.order)):
+        if index not in not_eligable:
+            eligable.append(index)
+
+    return eligable
+
+
+
+
+
+
+def get_variable_constants(vs):
+
+    # these vars are defined once as a constant and then used later
+    # and never redefined
+
+    eligable = []
+
+    # 1. To first qualify, a variable must never be used after declared
+        # check subsequent declartions and assignments
+    index = 0
+    for item in vs.order:
+        var = item[0]
+        dependencies = item[1]
+
+        if index == len(vs.order) - 1:
+            # no more following declarations/assignments
+            break
+        elif var == 'if':
+            index += 1
+            continue # we dont support if reductions yet
+
+        elif dependencies != None and len(dependencies) == 0:
+            eligable.append(index)
+
+        index += 1
+
+    return eligable
+
+
+def remove_if_statements(var_order, never_used, var_constants):
+    """
+    removes if statements and updates the indexes
+    """
+    offset = 0
+    index = 0
+
+    if_indexes = []
+
+    for item in var_order:
+        var = item[0]
+        dep = item[1]
+
+        if var == 'if':
+            # remove the if
+            if len(never_used) and index in never_used:
+                never_used.remove(index)
+            if len(var_constants) and index in var_constants:
+                var_constants.remove(index)
+
+            if_indexes.append(index)
+        index += 1
+
+    # update indexes
+    for i in range(len(never_used)):
+        index = never_used[i]
+        offset = len([x for x in if_indexes if x < index])
+        never_used[i] -= offset
+    for i in range(len(var_constants)):
+        index = var_constants[i]
+        offset = len([x for x in if_indexes if x < index])
+        var_constants[i] -= offset
+
+    return never_used, var_constants

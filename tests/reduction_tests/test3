@@ -1,0 +1,14 @@
+int dummy0() {
+
+if (a + b == 7) {
+  c = 7;
+  z = 4;
+} else if (a == 4){
+  c = 6;
+  d = c;
+  e = d;
+} else {
+  c = 9;
+}
+
+}

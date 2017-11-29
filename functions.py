@@ -370,3 +370,44 @@ def remove_if_statements(var_order, never_used, var_constants):
         var_constants[i] -= offset
 
     return never_used, var_constants
+
+
+
+def args_cleaner(args):
+    """
+    Helper function to format our sets
+    """
+    string = ""
+    first = True
+    for arg in args:
+        if first or len(args) == 1:
+            string += str(arg)
+            first = False
+        else:
+            string += ", %s" % str(arg)
+    return string
+
+def optimized_args_cleaner(args, optimizations):
+    """
+    Helper function to format our sets
+    """
+    string = ""
+    first = True
+
+    optimizations_str = {}
+    for i in optimizations:
+        optimizations_str[str(i)] = optimizations[i]
+
+    for arg in args:
+        if str(arg) in optimizations_str:
+            arg_str = optimizations_str[str(arg)]
+        else:
+            arg_str = str(arg)
+
+        if first or len(args) == 1:
+            string += arg_str
+            first = False
+        else:
+            string += ", %s" % arg_str
+
+    return string

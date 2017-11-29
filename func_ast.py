@@ -304,118 +304,89 @@ class functionDef(Node):
 
 
     def __str__(self):
-        """
-        Our AST in Functional code format
-        """
-        def args_cleaner(args):
-            """
-            Helper function to format our sets
-            """
-            string = ""
-            first = True
-            for arg in args:
-                if first:
-                    string += str(arg)
-                    first = False
-                else:
-                    string += ", %s" % str(arg)
-            return string
-
-        def optimized_args_cleaner(args, optimizations):
-            """
-            Helper function to format our sets
-            """
-            string = ""
-            first = True
-
-            optimizations_str = {}
-            for i in optimizations:
-                optimizations_str[str(i)] = optimizations[i]
-
-            for arg in args:
-                if str(arg) in optimizations_str:
-                    arg_str = optimizations_str[str(arg)]
-                else:
-                    arg_str = str(arg)
-
-                if first:
-                    string += arg_str
-                    first = False
-                else:
-                    string += ", %s" % arg_str
-
-            return string
-
+        # keep track of optimizations to be done on our code
         optimizations = {}
-
 
         # function name, inputs, outputs
         string = "fun block_function(%s) returns (%s) =\n" % (
-            args_cleaner(self.input_args),
-            args_cleaner(self.output_args)
+            functions.args_cleaner(self.input_args),
+            functions.args_cleaner(self.output_args)
         )
 
-        # now go over all our body items
-        tabs = 1
-        last_is_if = False
-        complex_if = False
+        last_is_if = False # last statement is a if
+        complex_if = False # last statement is not a simple ternary_if
 
+        # now go over all our body items
         for body in self.block_items:
             # body can be a let or let rec
             if isinstance(body, If):
-                if_body, ternary_if, _, complex_if = body.__str__(tabs)
+                if_body, ternary_if, _, complex_if = body.__str__()
 
-                if len(self.block_items) == 1 and not complex_if:
+                if (
+                    self.optimize_vars and
+                    len(self.block_items) == 1 and
+                    not complex_if
+                ):
                     string += "%s in \n" % ternary_if
                 else:
                     string += "%s in \n" % if_body
+
                 last_is_if = True
                 continue
 
+            elif isinstance(body, Let):
 
-            else:
-                if isinstance(body, Let):
+                lhand, rhand = body.optimized_str()
 
-                    lhand, rhand = body.optimized_str()
-
-                    #TODO: This if can be removed maybe ... look into it
+                # optimization can be done
+                if (
+                    self.optimize_vars and
+                    self.current_opt_index in self.never_used or
+                    self.current_opt_index in self.var_constants
+                ):
+                    # if variable is never used later on in the code
                     if (self.current_opt_index in self.never_used):
                         optimizations[str(lhand)] = rhand
 
+                    # if the variable can be replaced with a constant
                     if (self.current_opt_index in self.var_constants):
                         optimizations[str(lhand)] = rhand
                         self.var_constants_reference[str(lhand)] = rhand
 
-                    if (
-                        self.current_opt_index in self.never_used or
-                        self.current_opt_index in self.var_constants
-                    ):
-                        Node.current_opt_index += 1
-                        continue
+                    Node.current_opt_index += 1
+                    continue
 
-                string += tabs * "\t"
-                #string += "%s in \n" % body.__str__()
+                string += self.current_tab_index * "\t"
                 string += "%s in \n" % body.__str__()
                 last_is_if = False
 
+            else:
+                print("Not supported ... CODE??!")
+
             #indent
-            tabs += 1
+            Node.current_tab_index += 1
             Node.current_opt_index += 1
 
 
         # add final return
-        # code to handle the if return(trim un-needed output)
-        if not complex_if and last_is_if and len(self.block_items) == 1:
+        if (
+            not complex_if and
+            last_is_if and
+            len(self.block_items) == 1
+        ):
             string = string[:-4]
             return string
         elif last_is_if:
             string = string[:-4]
             string += "\nin "
         else:
-            string += tabs * "\t"
+            string += self.current_tab_index * "\t"
 
-
-        string += "(%s)" % optimized_args_cleaner(self.output_args, optimizations)
+        # add the output
+        if self.optimize_vars:
+            string += "(%s)" % functions.optimized_args_cleaner(self.output_args, optimizations)
+        else:
+            string += "(%s)" % functions.args_cleaner(self.output_args)
 
         # return the string
         return string
@@ -572,28 +543,6 @@ class FuncDecl(Node):
     attr_names = ()
 
 
-class FuncDef(Node):
-    #todo update
-    __slots__ = ('decl', 'param_decls', 'body', 'optimize_vars', 'coord', '__weakref__')
-
-    def __init__(self, decl, param_decls, body, optimize_vars, coord=None):
-        self.decl = decl
-        self.param_decls = param_decls
-        self.body = body
-        self.coord = coord
-        self.optimize_vars = optimize_vars
-
-    def children(self):
-        nodelist = []
-        if self.decl is not None: nodelist.append(("decl", self.decl))
-        if self.body is not None: nodelist.append(("body", self.body))
-        for i, child in enumerate(self.param_decls or []):
-            nodelist.append(("param_decls[%d]" % i, child))
-        return tuple(nodelist)
-
-    attr_names = ()
-
-
 class ID(Node):
     __slots__ = ('name', 'coord', '__weakref__')
 
@@ -607,7 +556,11 @@ class ID(Node):
 
     def __str__(self, lval=False):
 
-        if not lval and self.name in self.var_constants_reference:
+        if (
+            self.optimize_vars and
+            not lval and
+            self.name in self.var_constants_reference
+        ):
             return self.var_constants_reference[self.name]
 
         return self.name
@@ -647,125 +600,118 @@ class If(Node):
         if self.iffalse is not None: nodelist.append(("iffalse", self.iffalse))
         return tuple(nodelist)
 
-    def __str__(self, parent_tabs):
-        def args_cleaner(args):
-            """
-            Helper function to format our sets
-            """
-            string = ""
-            first = True
-            for arg in args:
-                if first:
-                    string += str(arg)
-                    first = False
-                else:
-                    string += ", %s" % str(arg)
-            return string
+    def __str__(self):
 
-        def optimized_args_cleaner(args, optimizations):
-            """
-            Helper function to format our sets
-            """
-            string = ""
-            first = True
-
-            optimizations_str = {}
-            for i in optimizations:
-                optimizations_str[str(i)] = optimizations[i]
-
-            for arg in args:
-                if str(arg) in optimizations_str:
-                    arg_str = optimizations_str[str(arg)]
-                else:
-                    arg_str = str(arg)
-
-                if first or len(args) == 1:
-                    string += arg_str
-                    first = False
-                else:
-                    string += ", %s" % arg_str
-
-            return string
-
+        # keep track of optimizations
         optimizations = {}
 
+        # different if formats
         string = ""
-        string2 = ""
-        tabs = parent_tabs
+        ternary_string = ""
 
-        string += tabs * "\t"
-        string += "let (%s) =\n" % args_cleaner(self.in_args)
+        # keep track of the current indentation to bring us back
+        # here when the if is done
+        parent_tabs = self.current_tab_index
+
+        # add inital let with args
+        string += self.current_tab_index * "\t"
+        string += "let (%s) =\n" % functions.args_cleaner(self.in_args)
+
+        Node.current_tab_index += 1
+
+        # add if and condition
+        string += self.current_tab_index * "\t"
+        string += "if %s\n" % str(self.cond)
 
 
-        tabs += 1
-
-        string += tabs * "\t"
-        string += "if "
-        string += str(self.cond)
-
-        string += "\n"
-        string += tabs * "\t"
+        string += self.current_tab_index * "\t"
         string += "then\n"
 
+        # Convert the if block to a string
+        if_block, if_block_tabs, opt, count = self.iftrue.__str__()
 
-        # add the if True block
-        if_block, t, opt, count = self.iftrue.__str__(tabs)
+        # Updated needed optimizations
         for key in opt:
             optimizations[str(key)] = opt[key]
 
-        # edge case, simple ternary if
-        if count == 0 and not self.iffalse:
-            tabs2 = parent_tabs
-
-            string2 += tabs * "\t"
-
-            string2 += "if %s then (%s) else (%s)" % (
+        # Edge Case: simple ternary if
+        if self.optimize_vars and count == 0 and not self.iffalse:
+            ternary_string += self.current_tab_index * "\t"
+            ternary_string += "if %s then (%s) else (%s)" % (
                 str(self.cond),
-                optimized_args_cleaner(self.in_args, optimizations),
-                args_cleaner(self.in_args)
+                functions.optimized_args_cleaner(self.in_args, optimizations),
+                functions.args_cleaner(self.in_args)
             )
 
+
+        # we continue to build the regular string incase
+        # we dont want ternary statements
+
+        # add the ifblock to the string
         string += if_block
-        # do if in statement
-        string += t * "\t"
-        string += ("(%s)") % optimized_args_cleaner(self.in_args, optimizations)
+
+        # complete the if block in statement
+        string += if_block_tabs * "\t"
+
+        if self.optimize_vars:
+            string += ("(%s)") % functions.optimized_args_cleaner(self.in_args, optimizations)
+        else:
+            string += ("(%s)") % functions.args_cleaner(self.in_args)
 
 
-        string += "\n" + tabs * "\t"
-        string += "else\n"
+        # start to work on the else statement
+        string += "\n" + self.current_tab_index * "\t" + "else\n"
 
+
+        # if we have a else if or else clause
         if self.iffalse:
-
+            # if we have a else if clause
             if isinstance(self.iffalse, If):
-                else_block, _, t, complex_if = self.iffalse.__str__(tabs)
+                # get string format of the else if block
+                else_block, _, t, complex_if = self.iffalse.__str__()
                 string += else_block
+                # add return in statement
                 string += "\n" + parent_tabs * "\t"
-                string += ("in (%s)") % args_cleaner(self.in_args)
-                return string, string2, tabs, True
+                string += ("in (%s)") % functions.args_cleaner(self.in_args)
+                tabs = self.current_tab_index
+                Node.current_tab_index = parent_tabs
+                return string, ternary_string, tabs, True
 
+            # if we have a else clause
             else:
-                else_block, t, opt, count = self.iffalse.__str__(tabs)
+                # get string format of else block
+                else_block, t, opt, count = self.iffalse.__str__()
                 string += else_block
 
+                # optimizations related to else block
                 opti = {}
                 for key in opt:
                     opti[str(key)] = opt[key]
 
                 # do else in statement
                 string += t * "\t"
-                string += ("(%s)") % optimized_args_cleaner(self.in_args, opti)
+                if self.optimize_vars:
+                    string += ("(%s)") % functions.optimized_args_cleaner(self.in_args, opti)
+                else:
+                    string += ("(%s)") % functions.args_cleaner(self.in_args)
 
+        # No else if or else clause
+        # functional programing requires a else clauss... add in some fluff
         else:
-            # return the tuple for else statements
-            string += tabs * "\t"
-            string += ("(%s)") % args_cleaner(self.in_args)
+            # return the variables relating to the if statement
+            string += self.current_tab_index * "\t"
+            string += ("(%s)") % functions.args_cleaner(self.in_args)
 
 
+        # update the if statements returning in
         string += "\n" + parent_tabs * "\t"
-        string += "in (%s)" % args_cleaner(self.out_args)
+        string += "in (%s)" % functions.args_cleaner(self.out_args)
 
-        simple_if = count == 0 and not self.iffalse
-        return string, string2, tabs, not simple_if
+        # get data to return to parent
+        simple_if = (self.optimize_vars and count == 0 and not self.iffalse)
+        tabs = self.current_tab_index
+        Node.current_tab_index = parent_tabs
+        return string, ternary_string, tabs, not simple_if
 
 
     attr_names = ()
@@ -785,16 +731,27 @@ class Block(Node):
 
     attr_names = ()
 
-    def __str__(self, tabs=1):
+    def __str__(self):
 
         optimizations = {}
 
         string = ""
         count = 0
+        parent_tabs = self.current_tab_index
 
         for index, child in self.children():
 
-            if isinstance(child, Let):
+            if not self.optimize_vars:
+
+                if isinstance(child, Let):
+                    string += self.current_tab_index * "\t"
+                    string += "%s in \n" % str(child)
+                    Node.current_tab_index += 1
+                else:
+                    if_body, _, _t, complex_if = child.__str__()
+                    string += "%s in \n" % if_body
+
+            elif isinstance(child, Let):
 
                 lhand, rhand = child.optimized_str()
 
@@ -813,16 +770,22 @@ class Block(Node):
                     Node.current_opt_index += 1
                     continue
 
-                string += tabs * "\t"
-                tabs += 1
+                string += self.current_tab_index * "\t"
                 string += "%s in \n" % str(child)
                 count += 1
+                Node.current_tab_index += 1
                 Node.current_opt_index += 1
 
             else:
                 count += 1
-                if_body, _, _t, complex_if = child.__str__(tabs)
+                if_body, _, _t, complex_if = child.__str__()
                 string += "%s in \n" % if_body
+
+        tabs = self.current_tab_index
+        Node.current_tab_index = parent_tabs
+
+        if not self.optimize_vars:
+            return string, tabs, optimizations, -1
 
         return string, tabs, optimizations, count
 

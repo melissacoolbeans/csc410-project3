@@ -121,6 +121,7 @@ def transform_ctf(x, optimize_vars=None):
 class BlockVisitor(mast.NodeVisitor):
 
     def __init__(self):
+        self.opt_functional_code = []
         self.functional_code = []
 
 
@@ -129,10 +130,14 @@ class BlockVisitor(mast.NodeVisitor):
         For each block of code, convert to a functional representation
         ie: every block becomes a function
         """
-        new_function = block_converter(node)
+        new_function = block_converter(node, False)
         self.functional_code.append(str(new_function))
 
-def block_converter(block):
+        new_opt_function = block_converter(node, True)
+        self.opt_functional_code.append(str(new_function))
+
+
+def block_converter(block, opt_on):
     """
     Converts minic_ast.Block to func_fast.functionDef
     """
@@ -174,12 +179,12 @@ def block_converter(block):
 
     #Toggle for optimizer, eventually remove and make it always on
 
-    fast.Node.optimize_vars = True
+    fast.Node.optimize_vars = opt_on
     fast.Node.never_used = never_used
     fast.Node.var_constants = var_constants
     fast.Node.current_opt_index = 0
 
-    fast.Node.current_tab_index = 0
+    fast.Node.current_tab_index = 1
 
     func_def = fast.functionDef(input_args, output_args, func_block_items)
 

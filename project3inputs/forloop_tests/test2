@@ -1,0 +1,9 @@
+int dummy0() {
+
+  while(i<n){
+    sum = a + 1;
+    z = b + 3;
+    i = i + 1;
+  }
+
+}

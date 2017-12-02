@@ -1,0 +1,8 @@
+int dummy0() {
+
+  for (i=0; i<n; i++){
+    sum = a + 1;
+    z = b + 3;
+  }
+
+}

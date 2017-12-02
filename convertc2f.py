@@ -19,6 +19,8 @@ def unsupported(y):
     elif y.__class__ == mc.Block:
         print("Ignoring sub block")
         return None
+    elif y.__class__ == mc.DeclList:
+        return None
     else:
         print("unsuported called on ", y, " error")
         print(y.__class__)
@@ -75,6 +77,54 @@ def handle_if_statements(orig, optimize_vars=None):
         out_args,
     )
 
+def handle_loop_statements(orig):
+    block = orig.stmt
+    nvs = NodeVisitor()
+    nvs.visit(block)
+
+    input_args = []
+
+    init = orig.init
+
+    i = "i"
+
+    if isinstance(init, mc.Assignment):
+        i = init.lvalue.name
+        input_args.append(str(i))
+    elif isinstance(init, mc.DeclList):
+        i = init.decls[0].name
+        input_args.append(str(i))
+
+    for key in nvs.assignment:
+        input_args.append(str(key))
+
+    return fast.LetRec(
+        transform_ctf(orig.init),
+        input_args,
+        transform_ctf(orig.cond),
+        transform_ctf(orig.next),
+        transform_ctf(orig.stmt),
+        coord=orig.coord
+    )
+
+def handle_while_statements(orig):
+    block = orig.stmt
+    nvs = NodeVisitor()
+    nvs.visit(block)
+
+    input_args = []
+    for key in nvs.assignment:
+        input_args.append(str(key))
+
+
+    return fast.LetRec(
+        None,
+        input_args,
+        transform_ctf(orig.cond),
+        None,
+        transform_ctf(orig.stmt),
+        coord=orig.coord,
+    )
 
 def transform_ctf(x, optimize_vars=None):
     """
@@ -109,6 +159,10 @@ def transform_ctf(x, optimize_vars=None):
 
         # (...)
         mc.ExprList: (lambda orig: fast.ExprList(tmap(orig.exprs))),
+
+        mc.For: (lambda orig: handle_loop_statements(orig)),
+        mc.While: (lambda orig: handle_while_statements(orig)),
+
 
         str: (lambda orig: orig),
         int: (lambda orig: orig),

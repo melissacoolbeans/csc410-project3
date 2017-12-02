@@ -17,6 +17,8 @@ class NodeVisitor(mast.NodeVisitor):
         # the order that we see items on the left hand side
         self.order = []
 
+        self.loop = []
+
     def visit_ID(self, node):
         '''
         For example if statement vars
@@ -25,10 +27,26 @@ class NodeVisitor(mast.NodeVisitor):
 
         self.other.append(node.name)
 
+    def visit_For(self, node):
+        """
+        We want to ignore the initilization variables as they should not be Added
+        to the optimizer references.
+        So just call the visiter on the children.
+        """
+        NodeVisitor.generic_visit(self, node.stmt)
+
+    def visit_While(self, node):
+        NodeVisitor.generic_visit(self, node.stmt)
+
     def visit_Decl(self, node):
         """
         a = 5;
+        we are in a forloop ...
+        do not at the init variables to the order ...
+        call visit on the child block
         """
+
+
         if not isinstance(node.type, mast.FuncDecl):
             lefthand = node.name
             righthand = node.init

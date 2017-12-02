@@ -226,6 +226,103 @@ class funcTuple(Node):
 
 
 class LetRec(Node):
+    __slots__ = ('init', 'in_args', 'cond', 'next', 'stmt', 'coord', '__weakref__')
+
+    def __init__(self, init, in_args, cond, next, stmt, coord=None):
+        self.init = init
+        self.in_args = in_args
+        self.cond = cond
+        self.next = next
+        self.stmt = stmt
+        self.coord = coord
+
+    def children(self):
+        nodelist = []
+        if self.init is not None: nodelist.append(("init", self.init))
+        if self.cond is not None: nodelist.append(("cond", self.cond))
+        if self.next is not None: nodelist.append(("next", self.next))
+        if self.stmt is not None: nodelist.append(("stmt", self.stmt))
+        return tuple(nodelist)
+
+    attr_names = ()
+
+    def __str__(self):
+        string = ""
+        parent_tabs = self.current_tab_index
+
+        if self.init:
+            string += self.current_tab_index * "  "
+            string += str(self.init) + " in\n"
+
+        string += self.current_tab_index * "  "
+        string += "Let (%s) =\n" % functions.args_cleaner(self.in_args)
+        Node.current_tab_index += 1
+
+        #define recursive function signature
+        string += self.current_tab_index * "  "
+        string += "let rec loop0 %s =\n" % functions.args_cleaner(self.in_args)#.replace(",", "")
+        Node.current_tab_index += 1
+
+        string += self.current_tab_index * "  "
+        string += "if %s\n" % str(self.cond)
+        string += self.current_tab_index * "  "
+        string += "then\n"
+
+        then_tab_index = self.current_tab_index
+        Node.current_tab_index += 1
+
+
+        #get the block execution code
+        block, block_tabs, opt, count = self.stmt.__str__()
+
+        optimizations = {}
+        # Updated needed optimizations
+        for key in opt:
+            optimizations[str(key)] = opt[key]
+
+        # add the let rec block
+        string += block
+
+        # increment the iterator if it exists
+        if self.next:
+            string += (block_tabs + 1) * "  "
+            block_tabs += 1
+            string += "%s in\n" % str(self.next)
+
+        # call the rec func again
+        string += (block_tabs + 1) * "  "
+        string += "loop0 "
+        if self.optimize_vars:
+            string += ("%s\n") % functions.optimized_args_cleaner(self.in_args, optimizations)#.replace(",", "")
+        else:
+            string += ("%s\n") % functions.args_cleaner(self.in_args)#.replace(",", "")
+
+        # add the in return statement for this case
+
+
+        # reset the let rec then else tab index
+        Node.current_tab_index = then_tab_index
+        #define end statement
+        string += self.current_tab_index * "  "
+        string += "else (%s)\n" % functions.args_cleaner(self.in_args)
+
+
+        string += (parent_tabs + 1) * "  "
+        string += "in loop0 %s" % functions.args_cleaner(self.in_args)#.replace(",", "")
+
+        Node.current_tab_index = parent_tabs
+        return string
+# let i = 0 in
+# let (i, sum) =
+#    let rec loop0 i sum =
+#       if i < n then (i, sum)
+#       else let sum = sum + a.(i) in
+#               let i = i + 1 in
+#                  loop0 i sum
+#    in loop0 i sum
+# in
+
+class LetRecOld(Node):
     __slots__ = (
 		'function_name',
 		'lvalue',
@@ -315,6 +412,7 @@ class functionDef(Node):
 
         last_is_if = False # last statement is a if
         complex_if = False # last statement is not a simple ternary_if
+        last_if_loop = False # last statement is a block
 
         # now go over all our body items
         for body in self.block_items:
@@ -356,10 +454,15 @@ class functionDef(Node):
                     Node.current_opt_index += 1
                     continue
 
-                string += self.current_tab_index * "\t"
+                string += self.current_tab_index * "  "
                 string += "%s in \n" % body.__str__()
                 last_is_if = False
 
+            elif isinstance(body, LetRec):
+
+                string += "%s\n" % body.__str__()
+                string += self.current_tab_index * "  " + "in\n"
+                continue
             else:
                 print("Not supported ... CODE??!")
 
@@ -380,7 +483,7 @@ class functionDef(Node):
             string = string[:-4]
             string += "\nin "
         else:
-            string += self.current_tab_index * "\t"
+            string += self.current_tab_index * "  "
 
         # add the output
         if self.optimize_vars:
@@ -614,17 +717,17 @@ class If(Node):
         parent_tabs = self.current_tab_index
 
         # add inital let with args
-        string += self.current_tab_index * "\t"
+        string += self.current_tab_index * "  "
         string += "let (%s) =\n" % functions.args_cleaner(self.in_args)
 
         Node.current_tab_index += 1
 
         # add if and condition
-        string += self.current_tab_index * "\t"
+        string += self.current_tab_index * "  "
         string += "if %s\n" % str(self.cond)
 
 
-        string += self.current_tab_index * "\t"
+        string += self.current_tab_index * "  "
         string += "then\n"
 
         # Convert the if block to a string
@@ -636,7 +739,7 @@ class If(Node):
 
         # Edge Case: simple ternary if
         if self.optimize_vars and count == 0 and not self.iffalse:
-            ternary_string += self.current_tab_index * "\t"
+            ternary_string += self.current_tab_index * "  "
             ternary_string += "if %s then (%s) else (%s)" % (
                 str(self.cond),
                 functions.optimized_args_cleaner(self.in_args, optimizations),
@@ -651,7 +754,7 @@ class If(Node):
         string += if_block
 
         # complete the if block in statement
-        string += if_block_tabs * "\t"
+        string += if_block_tabs * "  "
 
         if self.optimize_vars:
             string += ("(%s)") % functions.optimized_args_cleaner(self.in_args, optimizations)
@@ -660,7 +763,7 @@ class If(Node):
 
 
         # start to work on the else statement
-        string += "\n" + self.current_tab_index * "\t" + "else\n"
+        string += "\n" + self.current_tab_index * "  " + "else\n"
 
 
         # if we have a else if or else clause
@@ -671,7 +774,7 @@ class If(Node):
                 else_block, _, t, complex_if = self.iffalse.__str__()
                 string += else_block
                 # add return in statement
-                string += "\n" + parent_tabs * "\t"
+                string += "\n" + parent_tabs * "  "
                 string += ("in (%s)") % functions.args_cleaner(self.in_args)
                 tabs = self.current_tab_index
                 Node.current_tab_index = parent_tabs
@@ -689,7 +792,7 @@ class If(Node):
                     opti[str(key)] = opt[key]
 
                 # do else in statement
-                string += t * "\t"
+                string += t * "  "
                 if self.optimize_vars:
                     string += ("(%s)") % functions.optimized_args_cleaner(self.in_args, opti)
                 else:
@@ -699,12 +802,12 @@ class If(Node):
         # functional programing requires a else clauss... add in some fluff
         else:
             # return the variables relating to the if statement
-            string += self.current_tab_index * "\t"
+            string += self.current_tab_index * "  "
             string += ("(%s)") % functions.args_cleaner(self.in_args)
 
 
         # update the if statements returning in
-        string += "\n" + parent_tabs * "\t"
+        string += "\n" + parent_tabs * "  "
         string += "in (%s)" % functions.args_cleaner(self.out_args)
 
         # get data to return to parent
@@ -744,9 +847,11 @@ class Block(Node):
             if not self.optimize_vars:
 
                 if isinstance(child, Let):
-                    string += self.current_tab_index * "\t"
+                    string += self.current_tab_index * "  "
                     string += "%s in \n" % str(child)
                     Node.current_tab_index += 1
+                elif isinstance(child, LetRec):
+                    string += "%s in \n" % child.__str__()
                 else:
                     if_body, _, _t, complex_if = child.__str__()
                     string += "%s in \n" % if_body
@@ -770,11 +875,14 @@ class Block(Node):
                     Node.current_opt_index += 1
                     continue
 
-                string += self.current_tab_index * "\t"
+                string += self.current_tab_index * "  "
                 string += "%s in \n" % str(child)
                 count += 1
                 Node.current_tab_index += 1
                 Node.current_opt_index += 1
+            elif isinstance(child, LetRec):
+                count += 1
+                string += "%s in \n" % child.__str__()
 
             else:
                 count += 1

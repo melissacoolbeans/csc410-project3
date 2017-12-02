@@ -34,3 +34,8 @@ File: checkin3.py
 ## Check-in 5
 - File: checkin5.py
 - Optimized function code to remove unnecessary lets
+
+## Check-in 6
+- File: checkin6.py
+- Added support for for and while loops. 
+- Output can be optimized or unoptimized depending on user. checkin6.py will prompt for what todo. 

@@ -1,6 +1,8 @@
 # Project 3
 Anthony Samaha, Christiaan Rutten, Melissa Ng
 
+To learn more about how the tool was implemented and how to use it, reference report.pdf
+
 ## Check-in 1
 File: check-in1.py
 Outputs all variables and written variables for the 3 input files

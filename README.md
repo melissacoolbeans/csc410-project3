@@ -1,7 +1,7 @@
 # Project 3
 Anthony Samaha, Christiaan Rutten, Melissa Ng
 
-## eport.pdf
+## report.pdf
 A reference on how the tool was implemented and how to use it.
  
 ## Check-in 1

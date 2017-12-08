@@ -40,6 +40,7 @@ class Node(object):
     current_opt_index = None
 
     current_tab_index = None
+    loop_count = None
 
     @staticmethod
     def clear():
@@ -249,18 +250,24 @@ class LetRec(Node):
     def __str__(self):
         string = ""
         parent_tabs = self.current_tab_index
+        # if first encountered loop, set it to loop 0
+        if Node.loop_count == None:
+            Node.loop_count = 0
+
+        current_loop = "loop" + str(self.loop_count)
+        Node.loop_count += 1
 
         if self.init:
             string += self.current_tab_index * "  "
             string += str(self.init) + " in\n"
 
         string += self.current_tab_index * "  "
-        string += "Let (%s) =\n" % functions.args_cleaner(self.in_args)
+        string += "Let (%s) =\n" % functions.args_cleaner(self.in_args)#.replace(",", "")
         Node.current_tab_index += 1
 
         #define recursive function signature
         string += self.current_tab_index * "  "
-        string += "let rec loop0 %s =\n" % functions.args_cleaner(self.in_args)#.replace(",", "")
+        string += "let rec %s %s =\n" % (current_loop, functions.args_cleaner(self.in_args).replace(",", ""))
         Node.current_tab_index += 1
 
         string += self.current_tab_index * "  "
@@ -291,11 +298,11 @@ class LetRec(Node):
 
         # call the rec func again
         string += (block_tabs + 1) * "  "
-        string += "loop0 "
+        string += "%s " % current_loop
         if self.optimize_vars:
-            string += ("%s\n") % functions.optimized_args_cleaner(self.in_args, optimizations)#.replace(",", "")
+            string += ("%s\n") % functions.optimized_args_cleaner(self.in_args, optimizations).replace(",", "")
         else:
-            string += ("%s\n") % functions.args_cleaner(self.in_args)#.replace(",", "")
+            string += ("%s\n") % functions.args_cleaner(self.in_args).replace(",", "")
 
         # add the in return statement for this case
 
@@ -308,60 +315,10 @@ class LetRec(Node):
 
 
         string += (parent_tabs + 1) * "  "
-        string += "in loop0 %s" % functions.args_cleaner(self.in_args)#.replace(",", "")
+        string += "in %s %s" % (current_loop, functions.args_cleaner(self.in_args).replace(",", ""))
 
         Node.current_tab_index = parent_tabs
         return string
-# let i = 0 in
-# let (i, sum) =
-#    let rec loop0 i sum =
-#       if i < n then (i, sum)
-#       else let sum = sum + a.(i) in
-#               let i = i + 1 in
-#                  loop0 i sum
-#    in loop0 i sum
-# in
-
-class LetRecOld(Node):
-    __slots__ = (
-		'function_name',
-		'lvalue',
-		'if_statement',
-		'if_then',
-		'else_then'
-		'in_statement',
-		'coord',
-		'__weakref__'
-	)
-
-    def __init__(
-		self,
-		function_name,
-		lvalue,
-		if_statement,
-		if_then,
-		else_then,
-		in_statement,
-		coord=None
-	):
-		self.function_name = function_name
-		self.lvalue = lvalue  # the input vars on the left side of =
-		self.if_statement = if_statement # expression on the if condition
-		self.if_then = if_then # expression to execute if the if condition passes
-		self.else_then = else_then # expression to execute if the if condition fails
-		self.in_statement = in_statement # the value after the in statement in a let
-		self.coord = coord
-
-    def children(self):
-		nodelist = []
-		if self.function_name is not None: nodelist.append(("function_name", self.function_name))
-		if self.lvalue is not None: nodelist.append(("lvalue", self.lvalue))
-		if self.if_statement is not None: nodelist.append(("if_statement", self.if_statement))
-		if self.if_then is not None: nodelist.append(("if_then", self.if_then))
-		if self.else_then is not None: nodelist.append(("else_then", self.else_then))
-		if self.in_statement is not None: nodelist.append(("in_statement", self.in_statement))
-		return tuple(nodelist)
-
 
 class BinaryOp(Node):
     __slots__ = ('op', 'left', 'right', 'coord', '__weakref__')
@@ -685,12 +642,13 @@ class IdentifierType(Node):
 
 
 class If(Node):
-    __slots__ = ('cond', 'iftrue', 'iffalse', 'in_args', 'out_args', 'coord', '__weakref__')
-    def __init__(self, cond, iftrue, iffalse, in_args, out_args, coord=None):
+    __slots__ = ('cond', 'iftrue', 'iffalse', 'in_args', 'out_args', 'tern', 'coord', '__weakref__')
+    def __init__(self, cond, iftrue, iffalse, in_args, out_args, tern=None, coord=None):
         self.cond = cond
         self.iftrue = iftrue
         self.iffalse = iffalse
         self.coord = coord
+        self.tern = tern
 
         self.in_args = in_args
         self.out_args = out_args
@@ -704,6 +662,16 @@ class If(Node):
         return tuple(nodelist)
 
     def __str__(self):
+
+        if self.tern:
+            ternary_string = ""
+            #ternary_string += self.current_tab_index * "  "
+            ternary_string += "if %s then (%s) else (%s)" % (
+                str(self.cond),
+                str(self.iftrue),
+                str(self.iffalse),
+            )
+            return ternary_string
 
         # keep track of optimizations
         optimizations = {}
@@ -735,7 +703,13 @@ class If(Node):
 
         # Updated needed optimizations
         for key in opt:
-            optimizations[str(key)] = opt[key]
+            try:
+                optimizations[str(key)] = opt[key]
+            except:
+                try:
+                    optimizations[key] = opt[key]
+                except:
+                    a = None
 
         # Edge Case: simple ternary if
         if self.optimize_vars and count == 0 and not self.iffalse:
@@ -898,153 +872,6 @@ class Block(Node):
         return string, tabs, optimizations, count
 
 
-class InitList(Node):
-    __slots__ = ('exprs', 'coord', '__weakref__')
-
-    def __init__(self, exprs, coord=None):
-        self.exprs = exprs
-        self.coord = coord
-
-    def children(self):
-        nodelist = []
-        for i, child in enumerate(self.exprs or []):
-            nodelist.append(("exprs[%d]" % i, child))
-        return tuple(nodelist)
-
-    attr_names = ()
-
-
-class Label(Node):
-    __slots__ = ('name', 'stmt', 'coord', '__weakref__')
-
-    def __init__(self, name, stmt, coord=None):
-        self.name = name
-        self.stmt = stmt
-        self.coord = coord
-
-    def children(self):
-        nodelist = []
-        if self.stmt is not None: nodelist.append(("stmt", self.stmt))
-        return tuple(nodelist)
-
-    attr_names = ('name', )
-
-
-class NamedInitializer(Node):
-    __slots__ = ('name', 'expr', 'coord', '__weakref__')
-
-    def __init__(self, name, expr, coord=None):
-        self.name = name
-        self.expr = expr
-        self.coord = coord
-
-    def children(self):
-        nodelist = []
-        if self.expr is not None: nodelist.append(("expr", self.expr))
-        for i, child in enumerate(self.name or []):
-            nodelist.append(("name[%d]" % i, child))
-        return tuple(nodelist)
-
-    attr_names = ()
-
-
-class ParamList(Node):
-    __slots__ = ('params', 'coord', '__weakref__')
-
-    def __init__(self, params, coord=None):
-        self.params = params
-        self.coord = coord
-
-    def children(self):
-        nodelist = []
-        for i, child in enumerate(self.params or []):
-            nodelist.append(("params[%d]" % i, child))
-        return tuple(nodelist)
-
-    attr_names = ()
-
-
-class PtrDecl(Node):
-    __slots__ = ('type', 'coord', '__weakref__')
-
-    def __init__(self, ptrtype, coord=None):
-        self.type = ptrtype
-        self.coord = coord
-
-    def children(self):
-        nodelist = []
-        if self.type is not None: nodelist.append(("type", self.type))
-        return tuple(nodelist)
-
-    attr_names = ('quals', )
-
-
-class Return(Node):
-    __slots__ = ('expr', 'coord', '__weakref__')
-
-    def __init__(self, expr, coord=None):
-        self.expr = expr
-        self.coord = coord
-
-    def children(self):
-        nodelist = []
-        if self.expr is not None: nodelist.append(("expr", self.expr))
-        return tuple(nodelist)
-
-    attr_names = ()
-
-
-class TernaryOp(Node):
-    __slots__ = ('cond', 'iftrue', 'iffalse', 'coord', '__weakref__')
-
-    def __init__(self, cond, iftrue, iffalse, coord=None):
-        self.cond = cond
-        self.iftrue = iftrue
-        self.iffalse = iffalse
-        self.coord = coord
-
-    def children(self):
-        nodelist = []
-        if self.cond is not None: nodelist.append(("cond", self.cond))
-        if self.iftrue is not None: nodelist.append(("iftrue", self.iftrue))
-        if self.iffalse is not None: nodelist.append(("iffalse", self.iffalse))
-        return tuple(nodelist)
-
-    attr_names = ()
-
-
-class Typename(Node):
-    __slots__ = ('name', 'type', 'coord', '__weakref__')
-
-    def __init__(self, name, ttype, coord=None):
-        self.name = name
-        self.type = ttype
-        self.coord = coord
-
-    def children(self):
-        nodelist = []
-        if self.type is not None: nodelist.append(("type", self.type))
-        return tuple(nodelist)
-
-    attr_names = ('name', )
-
-
-class TypeDecl(Node):
-    __slots__ = ('declname', 'type', 'coord', '__weakref__')
-
-    def __init__(self, declname, ttype, coord=None):
-        self.declname = declname
-        self.type = ttype
-        self.coord = coord
-
-    def children(self):
-        nodelist = []
-        if self.type is not None: nodelist.append(("type", self.type))
-        return tuple(nodelist)
-
-    attr_names = ('name', )
-
-
 class UnaryOp(Node):
     __slots__ = ('op', 'expr', 'coord', '__weakref__')
 
@@ -1058,24 +885,12 @@ class UnaryOp(Node):
         if self.expr is not None: nodelist.append(("expr", self.expr))
         return tuple(nodelist)
 
+    def __str__(self):
+        return str(self.op) + str(self.expr)
+
     attr_names = ('op', )
 
 
-class Union(Node):
-    __slots__ = ('name', 'decls', 'coord', '__weakref__')
-
-    def __init__(self, name, decls, coord=None):
-        self.name = name
-        self.decls = decls
-        self.coord = coord
-
-    def children(self):
-        nodelist = []
-        for i, child in enumerate(self.decls or []):
-            nodelist.append(("decls[%d]" % i, child))
-        return tuple(nodelist)
-
-    attr_names = ('name', )
 
 
 # class ArrayDecl(Node):

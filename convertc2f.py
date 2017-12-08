@@ -46,25 +46,28 @@ def tmap(x):
 
 def handle_if_statements(orig, optimize_vars=None):
 
-
+    # get original if blocks
     if_block = orig.iftrue
     else_block = orig.iffalse
 
-
+    # go through the blocks getting all variables used
     nvs = NodeVisitor()
     nvs.visit(if_block)
     input_args1, output_args1 = get_vars_and_written(nvs)
 
+    # create the else block
     if else_block:
         nvs = NodeVisitor()
         nvs.visit(else_block)
         input_args2, output_args2 = get_vars_and_written(nvs)
 
+        # add else block variable to combined if else block variables
         in_args = list(set(input_args1 + input_args2))
         out_args = list(set(output_args1 + output_args2))
         else_obj = transform_ctf(orig.iffalse, optimize_vars)
 
     else:
+        # no else block, set it to none
         in_args = input_args1
         out_args = output_args1
         else_obj = None
@@ -77,17 +80,30 @@ def handle_if_statements(orig, optimize_vars=None):
         out_args,
     )
 
+def handle_tern_statements(orig, optimize_vars=None):
+
+    return fast.If(
+        transform_ctf(orig.cond),
+        transform_ctf(orig.iftrue, optimize_vars),
+        transform_ctf(orig.iffalse, optimize_vars),
+        None,
+        None,
+        tern=True,
+    )
+
+
 def handle_loop_statements(orig):
+
+    # transverse through the loop block
     block = orig.stmt
     nvs = NodeVisitor()
     nvs.visit(block)
-
     input_args = []
 
     init = orig.init
-
     i = "i"
 
+    # get initilizer variable
     if isinstance(init, mc.Assignment):
         i = init.lvalue.name
         input_args.append(str(i))
@@ -108,14 +124,15 @@ def handle_loop_statements(orig):
     )
 
 def handle_while_statements(orig):
+
     block = orig.stmt
     nvs = NodeVisitor()
     nvs.visit(block)
 
+    # get relevent loop vars
     input_args = []
     for key in nvs.assignment:
         input_args.append(str(key))
-
 
     return fast.LetRec(
         None,
@@ -141,11 +158,11 @@ def transform_ctf(x, optimize_vars=None):
         mc.ArrayRef: (lambda orig: fast.ArrayRef(transform_ctf(orig.name), transform_ctf(orig.subscript))),
         # ... = foo(...);
         mc.FuncCall: (lambda orig: fast.FuncCall(transform_ctf(orig.name), tmap(orig.args))),
-
+        mc.UnaryOp: (lambda orig: fast.UnaryOp(transform_ctf(orig.op), tmap(orig.expr))),
         #mc.If: (lambda orig: fast.If(transform_ctf(orig.cond), transform_ctf(orig.iftrue), transform_ctf(orig.iffalse))),
 
         mc.If: (lambda orig: handle_if_statements(orig, optimize_vars)),
-
+        mc.TernaryOp: (lambda orig: handle_tern_statements(orig, optimize_vars)),
 
 
         mc.Block: (lambda orig: fast.Block(lmap(transform_ctf, orig.block_items), optimize_vars)),
@@ -201,8 +218,8 @@ def block_converter(block, opt_on):
     fast.Node.var_constants = None
     fast.Node.var_constants_reference = {}
     fast.Node.current_opt_index = None
-
     fast.Node.current_tab_index = None
+    fast.loop_count = None
 
     # Find all relevant vars for func input and output
     nvs = NodeVisitor()
@@ -218,40 +235,20 @@ def block_converter(block, opt_on):
     # remove if statements variables
     never_used, var_constants = remove_if_statements(var_order, never_used, var_constants)
 
-
-    # update the helper to make the function header
-    # currently does not produce correct behabiour
-        # 1.
-            # int a = q;
-            # we dont list q as a required input var from get_vars_and_written()
-
     # get all declarations, assignments, etc in the block
     block_items = block.block_items
 
     # transform them to our functional representation
     func_block_items = [transform_ctf(i, optimize_vars) for i in block_items if i]
 
-    #Toggle for optimizer, eventually remove and make it always on
-
+    # set staic variables
     fast.Node.optimize_vars = opt_on
     fast.Node.never_used = never_used
     fast.Node.var_constants = var_constants
     fast.Node.current_opt_index = 0
-
     fast.Node.current_tab_index = 1
+    fast.loop_count = 0
 
     func_def = fast.functionDef(input_args, output_args, func_block_items)
 
     return func_def
-
-
-# # Testing the code
-# # ast = parse_file('./project3inputs/p3_input4')
-# ast = parse_file('./project3inputs/p3_input5')
-# minic_ast = ctoc.transform(ast)
-# vs = BlockVisitor()
-# vs.visit(minic_ast)
-#
-# for function in vs.functional_code:
-#     print(function)
-#     print("\n")

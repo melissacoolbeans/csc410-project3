@@ -397,6 +397,9 @@ class ID(Node):
         nodelist = []
         return tuple(nodelist)
 
+    def __str__(self):
+        return self.name
+
     attr_names = ('name', )
 
 
@@ -590,6 +593,8 @@ class UnaryOp(Node):
         nodelist = []
         if self.expr is not None: nodelist.append(("expr", self.expr))
         return tuple(nodelist)
+
+    
 
     attr_names = ('op', )
 

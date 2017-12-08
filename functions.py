@@ -409,6 +409,7 @@ def optimized_args_cleaner(args, optimizations):
     """
     Helper function to format our sets
     """
+
     string = ""
     first = True
 

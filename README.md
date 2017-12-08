@@ -1,6 +1,9 @@
 # Project 3
 Anthony Samaha, Christiaan Rutten, Melissa Ng
 
+## eport.pdf
+A reference on how the tool was implemented and how to use it.
+ 
 ## Check-in 1
 File: check-in1.py
 Outputs all variables and written variables for the 3 input files
